@@ -61,45 +61,66 @@ pub fn main() !void {
         }
     }
 
-    // Has 2!
-    std.debug.print("{any}\n", .{functions.items.len});
-
-    // It's works!
-    for (functions.items) |fun| {
-        std.debug.print("{s}\n", .{fun.name});
-
-        for (fun.args.items) |arg| {
-            std.debug.print("- {s}\n", .{arg.name});
-        }
-    }
+    var output = std.ArrayList(u8).init(allocator);
+    const writer = output.writer();
 
     // TODO: option.
-    const source_code = try generateModule(allocator, functions);
-    std.debug.print("{s}\n", source_code);
+    try generateModule(allocator, writer, functions);
+    var stdout_writer = std.io.getStdOut().writer();
+    try stdout_writer.print("{s}\n", .{output.items});
 }
 
-fn generateModule(allocator: std.mem.Allocator, functions: std.ArrayList(Function)) ![]u8 {
-    var source_code = try std.fmt.allocPrint(allocator,
+fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.ArrayList(Function)) !void {
+    _ = try writer.write(
         \\package main
         \\
-        \\type MyModule struct {s}
+        \\type MyModule struct {
+        \\}
         \\
-    , .{"{}"});
+    );
     for (functions.items) |fun| {
-        source_code = try std.fmt.allocPrint(allocator,
-            \\{s}
-            \\func (m *MyModule) {s}(
-        , .{ source_code, fun.name });
+        const name = try pascalize(allocator, fun.name);
+        defer allocator.free(name);
+
+        _ = try writer.print("func (m *MyModule) {s}(\n", .{name});
         for (fun.args.items) |arg| {
-            std.debug.print("- {s}\n", .{arg.name});
+            const arg_name = try downcase(allocator, arg.name);
+            defer allocator.free(name);
+            if (!arg.required) {
+                _ = try writer.write("// +optional\n");
+            }
+            _ = try writer.print("{s} string,\n", .{arg_name});
         }
-        source_code = try std.fmt.allocPrint(allocator,
-            \\{s}) {s}
-            \\{s}
-            \\
-        , .{ source_code, "{", "}" });
+        _ = try writer.write(")");
+        _ = try writer.write("{");
+        _ = try writer.write("}");
+        _ = try writer.write("\n\n");
     }
-    return source_code;
+}
+
+// Returns a new string that convert the first letter to capital case.
+fn pascalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
+    if (s.len == 0) {
+        return s;
+    }
+
+    var ns = try allocator.alloc(u8, s.len);
+    std.mem.copyForwards(u8, ns, s);
+    ns[0] = std.ascii.toUpper(s[0]);
+    return ns;
+}
+
+// Lower all characters in the string.
+fn downcase(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
+    return std.ascii.allocLowerString(allocator, s);
+}
+
+test downcase {
+    const allocator = std.testing.allocator;
+    var actual: []const u8 = undefined;
+    actual = try downcase(allocator, "TEST");
+    try std.testing.expectEqualStrings("test", actual);
+    allocator.free(actual);
 }
 
 const Arg = struct {
@@ -130,14 +151,24 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
     // 0 is name node.
     // 1 is `:` node.
     var block_node = target_node.child(2).?;
-    std.debug.print("{s}\n", .{block_node.toSexp()});
     for (0..block_node.childCount()) |child_index| {
         if (block_node.child(@intCast(child_index))) |stmt_node| {
             // ARG
-            std.debug.print("{s}\n", .{stmt_node.kind()});
             if (std.mem.eql(u8, stmt_node.kind(), "arg_command")) {
-                var var_node = stmt_node.childByFieldName("name").?;
-                try fun.args.append(Arg{ .name = source_file[var_node.startByte()..var_node.endByte()], .required = false });
+                const var_node = stmt_node.childByFieldName("name").?;
+                var required = false;
+                const options_node = stmt_node.childByFieldName("options");
+                if (options_node) |node| {
+                    if (node.child(0)) |opt_node| {
+                        if (std.mem.eql(u8, opt_node.kind(), "required")) {
+                            required = true;
+                        }
+                    }
+                }
+                try fun.args.append(Arg{
+                    .name = source_file[var_node.startByte()..var_node.endByte()],
+                    .required = required,
+                });
             }
         }
     }
