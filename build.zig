@@ -94,6 +94,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe_unit_tests.root_module.addImport("tree-sitter", ts.module("tree-sitter"));
+    exe_unit_tests.linkLibrary(ts.artifact("zig-tree-sitter"));
+    exe_unit_tests.root_module.addImport("tree-sitter-earthfile", ts_earthfile.module("tree-sitter-earthfile"));
+    exe_unit_tests.linkLibrary(ts_earthfile.artifact("tree-sitter-earthfile"));
+
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     // Similar to creating the run step earlier, this exposes a `test` step to

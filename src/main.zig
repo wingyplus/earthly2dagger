@@ -10,18 +10,6 @@ const go = @import("./languages/go.zig");
 //     - Otherwise, optional.
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    var functions = std.ArrayList(Function).init(allocator);
-
-    const language = ts_earthfile.language();
-    defer language.destroy();
-
-    const parser = ts.Parser.create();
-    defer parser.destroy();
-    try parser.setLanguage(language);
-
     const source_file =
         \\VERSION 0.7
         \\
@@ -33,6 +21,22 @@ pub fn main() !void {
         \\test:
         \\  FROM alpine
     ;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const stdout = std.io.getStdOut();
+    try generate(allocator, source_file, stdout.writer());
+}
+
+fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anytype) !void {
+    var functions = std.ArrayList(Function).init(allocator);
+
+    const language = ts_earthfile.language();
+    defer language.destroy();
+
+    const parser = ts.Parser.create();
+    defer parser.destroy();
+    try parser.setLanguage(language);
 
     // Parse source file into tree.
     const tree = parser.parseString(source_file, null).?;
@@ -61,28 +65,87 @@ pub fn main() !void {
         }
     }
 
-    var output = std.ArrayList(u8).init(allocator);
-    const writer = output.writer();
-
-    // TODO: option.
     try generateModule(allocator, writer, functions);
-    var stdout_writer = std.io.getStdOut().writer();
-    try stdout_writer.print("{s}\n", .{output.items});
 }
+
+test generate {
+    const source_file =
+        \\VERSION 0.7
+        \\
+        \\build:
+        \\  ARG --required NAME
+        \\  ARG TAG
+        \\  RUN echo "Hello, World"
+        \\
+        \\test:
+        \\  FROM alpine
+    ;
+
+    const expected =
+        \\package main
+        \\
+        \\import "dagger/mod/internal/dagger"
+        \\
+        \\type MyModule struct {
+        \\        Container *dagger.Container
+        \\}
+        \\
+        \\func New(
+        \\        // +optional
+        \\        container *dagger.Container,
+        \\) *MyModule {
+        \\        return &MyModule{Container: container}
+        \\}
+        \\func (m *MyModule) Build(
+        \\        name string,
+        \\        // +optional
+        \\        tag string,
+        \\) {
+        \\}
+        \\
+        \\func (m *MyModule) Test() {
+        \\}
+        \\
+    ;
+
+    var out = std.ArrayList(u8).init(std.testing.allocator);
+    defer out.deinit();
+
+    try generate(std.testing.allocator, source_file, out.writer());
+    try std.testing.expectEqualStrings(expected, out.items);
+}
+
+//
+// Generator (go)
+//
 
 fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.ArrayList(Function)) !void {
     _ = try writer.write(
         \\package main
         \\
+        \\import "dagger/mod/internal/dagger"
+        \\
         \\type MyModule struct {
+        \\  Container *dagger.Container
+        \\}
+        \\
+        \\func New(
+        \\  // +optional
+        \\  container *dagger.Container,
+        \\) *MyModule {
+        \\  return &MyModule{Container: container}
         \\}
         \\
     );
+    //
+    // Function rendering.
+    //
     for (functions.items) |fun| {
         const name = try pascalize(allocator, fun.name);
         defer allocator.free(name);
 
         _ = try writer.print("func (m *MyModule) {s}(\n", .{name});
+        // Arguments rendering.
         for (fun.args.items) |arg| {
             const arg_name = try downcase(allocator, arg.name);
             defer allocator.free(name);
@@ -97,6 +160,10 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
         _ = try writer.write("\n\n");
     }
 }
+
+//
+// String manipulation.
+//
 
 // Returns a new string that convert the first letter to capital case.
 fn pascalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
@@ -123,9 +190,18 @@ test downcase {
     allocator.free(actual);
 }
 
+//
+// Module
+//
+
 const Arg = struct {
     name: []const u8,
     required: bool,
+};
+
+const Statement = union(enum) {
+    // FROM <image>
+    from: []const u8,
 };
 
 // A function definition.
@@ -135,11 +211,25 @@ const Function = struct {
     // A name of the target. Need to convert string case by the generator.
     name: []const u8,
     args: std.ArrayList(Arg),
+    statements: std.ArrayList(Statement),
 
     pub fn init(allocator: std.mem.Allocator) Self {
-        return .{ .name = undefined, .args = std.ArrayList(Arg).init(allocator) };
+        return .{
+            .name = undefined,
+            .args = std.ArrayList(Arg).init(allocator),
+            .statements = std.ArrayList(Statement).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: Self) void {
+        self.args.deinit();
+        self.statements.deinit();
     }
 };
+
+//
+// Earthfile
+//
 
 // Convert target node into Dagger function definition.
 fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file: []const u8) !Function {
@@ -169,6 +259,15 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
                     .name = source_file[var_node.startByte()..var_node.endByte()],
                     .required = required,
                 });
+            }
+
+            // FROM image | location
+            if (std.mem.eql(u8, stmt_node.kind(), "from_command")) {
+                var from_node = stmt_node.child(0);
+                var addr = from_node.?.child(0).?.childByFieldName("name").?;
+
+                // TODO: use name from `from` node.
+                try fun.statements.append(Statement{ .from = source_file[addr.startByte()..addr.endByte()] });
             }
         }
     }
