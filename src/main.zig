@@ -4,11 +4,6 @@ const ts_earthfile = @import("tree-sitter-earthfile");
 const Parser = @import("./parser.zig");
 const go = @import("./languages/go.zig");
 
-// - Map a target into function.
-//   - Map `ARG` into function argument.
-//     - Map `--required` into required argument.
-//     - Otherwise, optional.
-
 pub fn main() !void {
     const source_file =
         \\VERSION 0.7
@@ -20,6 +15,9 @@ pub fn main() !void {
         \\
         \\test:
         \\  FROM alpine
+        \\
+        \\dist:
+        \\  FROM alpine:3.20
     ;
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -136,6 +134,7 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
         \\  return &MyModule{Container: container}
         \\}
         \\
+        \\
     );
     //
     // Function rendering.
@@ -155,9 +154,30 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
             _ = try writer.print("{s} string,\n", .{arg_name});
         }
         _ = try writer.write(")");
-        _ = try writer.write("{");
-        _ = try writer.write("}");
-        _ = try writer.write("\n\n");
+        if (fun.statements.items.len != 0) {
+            _ = try writer.write(" *dagger.Container ");
+        }
+        _ = try writer.write("{\n");
+        if (fun.statements.items.len != 0) {
+            _ = try writer.write("return m.Container");
+        }
+        for (fun.statements.items) |stmt| {
+            switch (stmt) {
+                // Convert `FROM image_spec` to `From(addr)`.
+                .from => |image_spec| {
+                    const image, const tag = image_spec;
+                    _ = try writer.write(".\n");
+                    _ = try writer.write("From(\"");
+                    _ = try writer.print("{s}", .{image});
+                    if (tag) |t| {
+                        _ = try writer.print(":{s}", .{t});
+                    }
+                    _ = try writer.write("\")");
+                },
+            }
+        }
+        _ = try writer.write("\n}\n");
+        _ = try writer.write("\n");
     }
 }
 
@@ -199,9 +219,11 @@ const Arg = struct {
     required: bool,
 };
 
+const ImageSpec = std.meta.Tuple(&.{ []const u8, ?[]const u8 });
+
 const Statement = union(enum) {
     // FROM <image>
-    from: []const u8,
+    from: ImageSpec,
 };
 
 // A function definition.
@@ -261,13 +283,32 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
                 });
             }
 
-            // FROM image | location
+            // FROM image
+            //
+            // image = target | image_spec | string
             if (std.mem.eql(u8, stmt_node.kind(), "from_command")) {
-                var from_node = stmt_node.child(0);
-                var addr = from_node.?.child(0).?.childByFieldName("name").?;
+                // image node
+                const node = stmt_node.child(1).?;
+                var image: []const u8 = "";
+                var tag: ?[]const u8 = null;
 
-                // TODO: use name from `from` node.
-                try fun.statements.append(Statement{ .from = source_file[addr.startByte()..addr.endByte()] });
+                if (std.mem.eql(u8, node.kind(), "string")) {
+                    image = source_file[node.startByte()..node.endByte()];
+                } else if (std.mem.eql(u8, node.kind(), "image_spec")) {
+                    const image_name_node = node.childByFieldName("name").?;
+                    const image_tag_node = node.childByFieldName("tag");
+
+                    image = source_file[image_name_node.startByte()..image_name_node.endByte()];
+                    if (image_tag_node) |img_tag_node| {
+                        tag = source_file[img_tag_node.startByte()..img_tag_node.endByte()];
+                    }
+                } else {
+                    unreachable;
+                }
+
+                try fun.statements.append(Statement{
+                    .from = .{ image, tag },
+                });
             }
         }
     }
