@@ -11,7 +11,8 @@ pub fn main() !void {
         \\build:
         \\  ARG --required NAME
         \\  ARG TAG
-        \\  RUN echo "Hello, World"
+        \\  FROM alpine
+        \\  RUN echo "Hello, World ${NAME}"
         \\
         \\test:
         \\  FROM alpine
@@ -73,7 +74,7 @@ test generate {
         \\build:
         \\  ARG --required NAME
         \\  ARG TAG
-        \\  RUN echo "Hello, World"
+        \\  RUN echo "Hello, World ${TAG}"
         \\
         \\test:
         \\  FROM alpine
@@ -121,7 +122,7 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
     _ = try writer.write(
         \\package main
         \\
-        \\import "dagger/mod/internal/dagger"
+        \\import "dagger/my-module/internal/dagger"
         \\
         \\type MyModule struct {
         \\  Container *dagger.Container
@@ -131,6 +132,9 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
         \\  // +optional
         \\  container *dagger.Container,
         \\) *MyModule {
+        \\  if container == nil {
+        \\    container = dag.Container()
+        \\  }
         \\  return &MyModule{Container: container}
         \\}
         \\
@@ -161,6 +165,11 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
         if (fun.statements.items.len != 0) {
             _ = try writer.write("return m.Container");
         }
+        for (fun.args.items) |arg| {
+            const arg_name = try downcase(allocator, arg.name);
+            _ = try writer.write(".\n");
+            _ = try writer.print("WithEnvVariable(\"{s}\", {s})", .{ arg.name, arg_name });
+        }
         for (fun.statements.items) |stmt| {
             switch (stmt) {
                 // Convert `FROM image_spec` to `From(addr)`.
@@ -173,6 +182,12 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
                         _ = try writer.print(":{s}", .{t});
                     }
                     _ = try writer.write("\")");
+                },
+                .run => |sh| {
+                    _ = try writer.write(".\n");
+                    _ = try writer.write("WithExec([]string{\"sh\", \"-c\", ");
+                    _ = try writer.print("`{s}`", .{sh});
+                    _ = try writer.write("}, dagger.ContainerWithExecOpts{Expand: true})");
                 },
             }
         }
@@ -224,6 +239,8 @@ const ImageSpec = std.meta.Tuple(&.{ []const u8, ?[]const u8 });
 const Statement = union(enum) {
     // FROM <image>
     from: ImageSpec,
+    // RUN <command>
+    run: []const u8,
 };
 
 // A function definition.
@@ -265,7 +282,7 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
     var block_node = target_node.child(2).?;
     for (0..block_node.childCount()) |child_index| {
         if (block_node.child(@intCast(child_index))) |stmt_node| {
-            // ARG
+            // ARG name
             if (std.mem.eql(u8, stmt_node.kind(), "arg_command")) {
                 const var_node = stmt_node.childByFieldName("name").?;
                 var required = false;
@@ -308,6 +325,15 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
 
                 try fun.statements.append(Statement{
                     .from = .{ image, tag },
+                });
+            }
+
+            // RUN command ...
+            if (std.mem.eql(u8, stmt_node.kind(), "run_command")) {
+                const shell_fragment_node = stmt_node.child(1).?;
+                const sh = source_file[shell_fragment_node.startByte()..shell_fragment_node.endByte()];
+                try fun.statements.append(Statement{
+                    .run = sh,
                 });
             }
         }
