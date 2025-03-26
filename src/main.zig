@@ -28,7 +28,11 @@ pub fn main() !void {
 }
 
 fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anytype) !void {
-    var functions = std.ArrayList(Function).init(allocator);
+    var arena_allocator = std.heap.ArenaAllocator.init(allocator);
+    defer arena_allocator.deinit();
+
+    var functions = std.ArrayList(Function).init(arena_allocator.allocator());
+    defer functions.deinit();
 
     const language = ts_earthfile.language();
     defer language.destroy();
@@ -60,11 +64,11 @@ fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anyty
     while (query_cursor.nextMatch()) |match| {
         const captures = match.captures;
         for (captures) |capture| {
-            try functions.append(try intoFunction(allocator, capture.node, source_file));
+            try functions.append(try intoFunction(arena_allocator.allocator(), capture.node, source_file));
         }
     }
 
-    try generateModule(allocator, writer, functions);
+    try generateModule(arena_allocator.allocator(), writer, functions);
 }
 
 test generate {
@@ -83,27 +87,39 @@ test generate {
     const expected =
         \\package main
         \\
-        \\import "dagger/mod/internal/dagger"
+        \\import "dagger/my-module/internal/dagger"
         \\
         \\type MyModule struct {
-        \\        Container *dagger.Container
+        \\  Container *dagger.Container
         \\}
         \\
         \\func New(
-        \\        // +optional
-        \\        container *dagger.Container,
+        \\  // +optional
+        \\  container *dagger.Container,
         \\) *MyModule {
-        \\        return &MyModule{Container: container}
-        \\}
-        \\func (m *MyModule) Build(
-        \\        name string,
-        \\        // +optional
-        \\        tag string,
-        \\) {
+        \\  if container == nil {
+        \\    container = dag.Container()
+        \\  }
+        \\  return &MyModule{Container: container}
         \\}
         \\
-        \\func (m *MyModule) Test() {
+        \\func (m *MyModule) Build(
+        \\name string,
+        \\// +optional
+        \\tag string,
+        \\) *dagger.Container {
+        \\return m.Container.
+        \\WithEnvVariable("NAME", name).
+        \\WithEnvVariable("TAG", tag).
+        \\WithExec([]string{"sh", "-c", `echo "Hello, World ${TAG}"`}, dagger.ContainerWithExecOpts{Expand: true})
         \\}
+        \\
+        \\func (m *MyModule) Test(
+        \\) *dagger.Container {
+        \\return m.Container.
+        \\From("alpine")
+        \\}
+        \\
         \\
     ;
 
@@ -151,7 +167,7 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
         // Arguments rendering.
         for (fun.args.items) |arg| {
             const arg_name = try downcase(allocator, arg.name);
-            defer allocator.free(name);
+            defer allocator.free(arg_name);
             if (!arg.required) {
                 _ = try writer.write("// +optional\n");
             }
@@ -241,6 +257,8 @@ const Statement = union(enum) {
     from: ImageSpec,
     // RUN <command>
     run: []const u8,
+    // ENV <key> <value>
+    // env: []const u8,
 };
 
 // A function definition.

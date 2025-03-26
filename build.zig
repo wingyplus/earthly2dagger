@@ -44,8 +44,8 @@ pub fn build(b: *std.Build) void {
     exe.linkLibrary(ts.artifact("zig-tree-sitter"));
 
     const ts_earthfile = b.dependency("tree-sitter-earthfile", .{
-        // .target = target,
-        // .optimize = optimize,
+        .target = target,
+        .optimize = optimize,
     });
     exe.root_module.addImport("tree-sitter-earthfile", ts_earthfile.module("tree-sitter-earthfile"));
     exe.linkLibrary(ts_earthfile.artifact("tree-sitter-earthfile"));
