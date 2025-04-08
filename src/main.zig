@@ -262,6 +262,10 @@ const Function = struct {
         self.args.deinit();
         self.statements.deinit();
     }
+
+    pub fn addStatement(self: *Function, statement: Statement) !void {
+        try self.statements.append(statement);
+    }
 };
 
 //
@@ -282,64 +286,75 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
         if (block_node.child(@intCast(child_index))) |stmt_node| {
             // ARG name
             if (std.mem.eql(u8, stmt_node.kind(), "arg_command")) {
-                const var_node = stmt_node.childByFieldName("name").?;
-                var required = false;
-                const options_node = stmt_node.childByFieldName("options");
-                if (options_node) |node| {
-                    if (node.child(0)) |opt_node| {
-                        if (std.mem.eql(u8, opt_node.kind(), "required")) {
-                            required = true;
-                        }
-                    }
-                }
-                const env_name = ts_util.content(var_node, source_file);
-                try fun.args.append(Arg{
-                    .name = env_name,
-                    .required = required,
-                });
-                try fun.statements.append(Statement{
-                    .env = .{ env_name, try strcase.downcase(allocator, env_name) },
-                });
+                try parse_arg_statement(allocator, &fun, stmt_node, source_file);
             }
 
             // FROM image
             //
             // image = target | image_spec | string
             if (std.mem.eql(u8, stmt_node.kind(), "from_command")) {
-                // image node
-                const node = stmt_node.child(1).?;
-                var image: []const u8 = "";
-                var tag: ?[]const u8 = null;
-
-                if (std.mem.eql(u8, node.kind(), "string")) {
-                    image = ts_util.content(node, source_file);
-                } else if (std.mem.eql(u8, node.kind(), "image_spec")) {
-                    const image_name_node = node.childByFieldName("name").?;
-                    const image_tag_node = node.childByFieldName("tag");
-
-                    image = ts_util.content(image_name_node, source_file);
-                    if (image_tag_node) |img_tag_node| {
-                        tag = ts_util.content(img_tag_node, source_file);
-                    }
-                } else {
-                    unreachable;
-                }
-
-                try fun.statements.append(Statement{
-                    .from = .{ image, tag },
-                });
+                try parse_from_statement(&fun, stmt_node, source_file);
             }
 
             // RUN command ...
             if (std.mem.eql(u8, stmt_node.kind(), "run_command")) {
-                const shell_fragment_node = stmt_node.child(1).?;
-                const sh = ts_util.content(shell_fragment_node, source_file);
-                try fun.statements.append(Statement{
-                    .run = sh,
-                });
+                try parse_run_statement(&fun, stmt_node, source_file);
             }
         }
     }
 
     return fun;
+}
+
+fn parse_arg_statement(allocator: std.mem.Allocator, fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
+    const var_node = stmt_node.childByFieldName("name").?;
+    var required = false;
+    const options_node = stmt_node.childByFieldName("options");
+    if (options_node) |node| {
+        if (node.child(0)) |opt_node| {
+            if (std.mem.eql(u8, opt_node.kind(), "required")) {
+                required = true;
+            }
+        }
+    }
+    const env_name = ts_util.content(var_node, source_file);
+    try fun.args.append(Arg{
+        .name = env_name,
+        .required = required,
+    });
+    try fun.statements.append(Statement{
+        .env = .{ env_name, try strcase.downcase(allocator, env_name) },
+    });
+}
+
+fn parse_from_statement(fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
+    var image: []const u8 = "";
+    var tag: ?[]const u8 = null;
+
+    var image_node = stmt_node.child(1).?;
+    if (std.mem.eql(u8, image_node.kind(), "string")) {
+        image = ts_util.content(image_node, source_file);
+    } else if (std.mem.eql(u8, image_node.kind(), "image_spec")) {
+        const image_name_node = image_node.childByFieldName("name").?;
+        const image_tag_node = image_node.childByFieldName("tag");
+
+        image = ts_util.content(image_name_node, source_file);
+        if (image_tag_node) |node| {
+            tag = ts_util.content(node, source_file);
+        }
+    } else {
+        unreachable;
+    }
+
+    try fun.statements.append(Statement{
+        .from = .{ image, tag },
+    });
+}
+
+fn parse_run_statement(fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
+    const shell_fragment_node = stmt_node.child(1).?;
+    const sh = ts_util.content(shell_fragment_node, source_file);
+    try fun.addStatement(Statement{
+        .run = sh,
+    });
 }
