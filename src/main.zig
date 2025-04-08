@@ -3,6 +3,7 @@ const ts = @import("tree-sitter");
 const ts_earthfile = @import("tree-sitter-earthfile");
 const Parser = @import("./parser.zig");
 const go = @import("./languages/go.zig");
+const ts_util = @import("./ts_util.zig");
 
 pub fn main() !void {
     const source_file =
@@ -292,8 +293,8 @@ const Function = struct {
 fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file: []const u8) !Function {
     var fun = Function.init(allocator);
 
-    var name_node = target_node.childByFieldName("name").?;
-    fun.name = source_file[name_node.startByte()..name_node.endByte()];
+    const name_node = target_node.childByFieldName("name").?;
+    fun.name = ts_util.content(name_node, source_file);
 
     // 0 is name node.
     // 1 is `:` node.
@@ -313,7 +314,7 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
                     }
                 }
                 try fun.args.append(Arg{
-                    .name = source_file[var_node.startByte()..var_node.endByte()],
+                    .name = ts_util.content(var_node, source_file),
                     .required = required,
                 });
             }
@@ -328,14 +329,14 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
                 var tag: ?[]const u8 = null;
 
                 if (std.mem.eql(u8, node.kind(), "string")) {
-                    image = source_file[node.startByte()..node.endByte()];
+                    image = ts_util.content(node, source_file);
                 } else if (std.mem.eql(u8, node.kind(), "image_spec")) {
                     const image_name_node = node.childByFieldName("name").?;
                     const image_tag_node = node.childByFieldName("tag");
 
-                    image = source_file[image_name_node.startByte()..image_name_node.endByte()];
+                    image = ts_util.content(image_name_node, source_file);
                     if (image_tag_node) |img_tag_node| {
-                        tag = source_file[img_tag_node.startByte()..img_tag_node.endByte()];
+                        tag = ts_util.content(img_tag_node, source_file);
                     }
                 } else {
                     unreachable;
@@ -349,7 +350,7 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
             // RUN command ...
             if (std.mem.eql(u8, stmt_node.kind(), "run_command")) {
                 const shell_fragment_node = stmt_node.child(1).?;
-                const sh = source_file[shell_fragment_node.startByte()..shell_fragment_node.endByte()];
+                const sh = ts_util.content(shell_fragment_node, source_file);
                 try fun.statements.append(Statement{
                     .run = sh,
                 });
