@@ -286,19 +286,19 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
         if (block_node.child(@intCast(child_index))) |stmt_node| {
             // ARG name
             if (std.mem.eql(u8, stmt_node.kind(), "arg_command")) {
-                try parse_arg_statement(allocator, &fun, stmt_node, source_file);
+                try parseArgStatement(allocator, &fun, stmt_node, source_file);
             }
 
             // FROM image
             //
             // image = target | image_spec | string
             if (std.mem.eql(u8, stmt_node.kind(), "from_command")) {
-                try parse_from_statement(&fun, stmt_node, source_file);
+                try parseFromStatement(&fun, stmt_node, source_file);
             }
 
             // RUN command ...
             if (std.mem.eql(u8, stmt_node.kind(), "run_command")) {
-                try parse_run_statement(&fun, stmt_node, source_file);
+                try parseRunStatement(&fun, stmt_node, source_file);
             }
         }
     }
@@ -306,7 +306,7 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
     return fun;
 }
 
-fn parse_arg_statement(allocator: std.mem.Allocator, fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
+fn parseArgStatement(allocator: std.mem.Allocator, fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
     const var_node = stmt_node.childByFieldName("name").?;
     var required = false;
     const options_node = stmt_node.childByFieldName("options");
@@ -327,7 +327,7 @@ fn parse_arg_statement(allocator: std.mem.Allocator, fun: *Function, stmt_node: 
     });
 }
 
-fn parse_from_statement(fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
+fn parseFromStatement(fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
     var image: []const u8 = "";
     var tag: ?[]const u8 = null;
 
@@ -351,7 +351,7 @@ fn parse_from_statement(fun: *Function, stmt_node: ts.Node, source_file: []const
     });
 }
 
-fn parse_run_statement(fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
+fn parseRunStatement(fun: *Function, stmt_node: ts.Node, source_file: []const u8) !void {
     const shell_fragment_node = stmt_node.child(1).?;
     const sh = ts_util.content(shell_fragment_node, source_file);
     try fun.addStatement(Statement{
