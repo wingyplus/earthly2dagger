@@ -4,6 +4,7 @@ const ts_earthfile = @import("tree-sitter-earthfile");
 const Parser = @import("./parser.zig");
 const go = @import("./languages/go.zig");
 const ts_util = @import("./ts_util.zig");
+const strcase = @import("./strcase.zig");
 
 pub fn main() !void {
     const source_file =
@@ -161,13 +162,13 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
     // Function rendering.
     //
     for (functions.items) |fun| {
-        const name = try pascalize(allocator, fun.name);
+        const name = try strcase.pascalize(allocator, fun.name);
         defer allocator.free(name);
 
         _ = try writer.print("func (m *MyModule) {s}(\n", .{name});
         // Arguments rendering.
         for (fun.args.items) |arg| {
-            const arg_name = try downcase(allocator, arg.name);
+            const arg_name = try strcase.downcase(allocator, arg.name);
             defer allocator.free(arg_name);
             if (!arg.required) {
                 _ = try writer.write("// +optional\n");
@@ -216,31 +217,6 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
 //
 // String manipulation.
 //
-
-// Returns a new string that convert the first letter to capital case.
-fn pascalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
-    if (s.len == 0) {
-        return s;
-    }
-
-    var ns = try allocator.alloc(u8, s.len);
-    std.mem.copyForwards(u8, ns, s);
-    ns[0] = std.ascii.toUpper(s[0]);
-    return ns;
-}
-
-// Lower all characters in the string.
-fn downcase(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
-    return std.ascii.allocLowerString(allocator, s);
-}
-
-test downcase {
-    const allocator = std.testing.allocator;
-    var actual: []const u8 = undefined;
-    actual = try downcase(allocator, "TEST");
-    try std.testing.expectEqualStrings("test", actual);
-    allocator.free(actual);
-}
 
 //
 // Module
@@ -322,7 +298,7 @@ fn intoFunction(allocator: std.mem.Allocator, target_node: ts.Node, source_file:
                     .required = required,
                 });
                 try fun.statements.append(Statement{
-                    .env = .{ env_name, try downcase(allocator, env_name) },
+                    .env = .{ env_name, try strcase.downcase(allocator, env_name) },
                 });
             }
 
