@@ -36,19 +36,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const ts = b.dependency("tree-sitter", .{
+    const ts = b.dependency("tree_sitter", .{
         .target = target,
         .optimize = optimize,
     });
     exe.root_module.addImport("tree-sitter", ts.module("tree-sitter"));
     exe.linkLibrary(ts.artifact("zig-tree-sitter"));
 
-    const ts_earthfile = b.dependency("tree-sitter-earthfile", .{
+    const ts_earthfile = b.dependency("tree_sitter_earthfile", .{
         .target = target,
         .optimize = optimize,
     });
     exe.root_module.addImport("tree-sitter-earthfile", ts_earthfile.module("tree-sitter-earthfile"));
-    exe.linkLibrary(ts_earthfile.artifact("tree-sitter-earthfile"));
+    exe.linkLibrary(ts_earthfile.artifact("tree_sitter_earthfile"));
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -97,7 +97,7 @@ pub fn build(b: *std.Build) void {
     exe_unit_tests.root_module.addImport("tree-sitter", ts.module("tree-sitter"));
     exe_unit_tests.linkLibrary(ts.artifact("zig-tree-sitter"));
     exe_unit_tests.root_module.addImport("tree-sitter-earthfile", ts_earthfile.module("tree-sitter-earthfile"));
-    exe_unit_tests.linkLibrary(ts_earthfile.artifact("tree-sitter-earthfile"));
+    exe_unit_tests.linkLibrary(ts_earthfile.artifact("tree_sitter_earthfile"));
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
