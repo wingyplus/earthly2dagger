@@ -25,3 +25,7 @@ pub fn main() !void {
     const stdout = std.io.getStdOut();
     try module.generate(allocator, source_file, stdout.writer());
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}
