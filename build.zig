@@ -1,5 +1,7 @@
 const std = @import("std");
 
+// TODO: fully static linking.
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -46,9 +48,12 @@ pub fn build(b: *std.Build) void {
     const ts_earthfile = b.dependency("tree_sitter_earthfile", .{
         .target = target,
         .optimize = optimize,
+        .@"build-shared" = false,
     });
     exe.root_module.addImport("tree-sitter-earthfile", ts_earthfile.module("tree-sitter-earthfile"));
     exe.linkLibrary(ts_earthfile.artifact("tree_sitter_earthfile"));
+
+    exe.linkLibC();
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

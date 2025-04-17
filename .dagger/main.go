@@ -1,20 +1,7 @@
-// A generated module for Earthly2Dagger functions
-//
-// This module has been generated via dagger init and serves as a reference to
-// basic module structure as you get started with Dagger.
-//
-// Two functions have been pre-created. You can modify, delete, or add to them,
-// as needed. They demonstrate usage of arguments and return types using simple
-// echo and grep commands. The functions can be called from the dagger CLI or
-// from one of the SDKs.
-//
-// The first line in this comment block is a short description line and the
-// rest is a long description with more detail on the module's purpose or usage,
-// if appropriate. All modules should have a short description.
-
 package main
 
 import (
+	"context"
 	"dagger/earthly-2-dagger/internal/dagger"
 )
 
@@ -26,7 +13,7 @@ func New(
 	return &Earthly2Dagger{
 		Source: source,
 		Container: dag.Container().
-			With(zig).
+			With(baseImage).
 			WithWorkdir("/source").
 			WithMountedDirectory(".", source),
 	}
@@ -37,6 +24,25 @@ type Earthly2Dagger struct {
 	Container *dagger.Container
 }
 
-func (m *Earthly2Dagger) Binary() *dagger.Directory {
-	return m.Container.WithExec([]string{"zig", "build"}).Directory("zig-out")
+// Build earthly2dagger binary.
+func (m *Earthly2Dagger) Build() *dagger.Container {
+	return m.Container.
+		WithExec([]string{
+			"zig", "build", "install", "--prefix", "/usr/local", "-Doptimize=ReleaseSafe",
+		})
+}
+
+// Convert Earthfile into Dagger module.
+func (m *Earthly2Dagger) Run(
+	ctx context.Context,
+	// +optional
+	earthfile string,
+) (string, error) {
+	return m.Build().
+		WithExec([]string{"e2d"}, dagger.ContainerWithExecOpts{
+			RedirectStdout: "/tmp/out.go",
+		}).
+		WithExec([]string{"go", "fmt", "/tmp/out.go"}).
+		File("/tmp/out.go").
+		Contents(ctx)
 }

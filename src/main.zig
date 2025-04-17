@@ -1,6 +1,5 @@
 const std = @import("std");
-const Parser = @import("./parser.zig");
-const module = @import("./module.zig");
+const module = @import("./root.zig").module;
 
 pub fn main() !void {
     // TODO: read content from file.
