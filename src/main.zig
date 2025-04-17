@@ -1,28 +1,34 @@
 const std = @import("std");
 const module = @import("./root.zig").module;
 
+const CliError = error{
+    ArgumentError,
+};
+
 pub fn main() !void {
-    // TODO: read content from file.
-    const source_file =
-        \\VERSION 0.7
-        \\
-        \\build:
-        \\  ARG --required NAME
-        \\  ARG TAG
-        \\  FROM alpine
-        \\  RUN echo "Hello, World ${NAME}"
-        \\
-        \\test:
-        \\  FROM alpine
-        \\
-        \\dist:
-        \\  FROM alpine:3.20
-    ;
+    const stdout = std.io.getStdOut();
+    const stderr = std.io.getStdErr();
+
     // TODO: use gpa allocator.
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    const stdout = std.io.getStdOut();
+
+    var args = std.process.args();
+    _ = args.next();
+    const earthfile_path = args.next();
+
+    if (earthfile_path == null) {
+        _ = try stderr.write("ERROR: Earthfile argument is missing.\n");
+        _ = try stderr.write("help:\n");
+        _ = try stderr.write("\te2d [EARTHFILE]\n");
+        return CliError.ArgumentError;
+    }
+
+    const earthfile = try std.fs.openFileAbsolute(earthfile_path.?, .{ .mode = .read_only });
+    defer earthfile.close();
+
+    const source_file = try earthfile.readToEndAlloc(allocator, 3 * 1024 * 1024);
     try module.generate(allocator, source_file, stdout.writer());
 }
 
