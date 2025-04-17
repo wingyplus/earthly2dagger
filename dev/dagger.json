@@ -1,0 +1,13 @@
+{
+  "name": "earthly-2-dagger-dev",
+  "engineVersion": "v0.18.2",
+  "sdk": {
+    "source": "go"
+  },
+  "dependencies": [
+    {
+      "name": "earthly-2-dagger",
+      "source": ".."
+    }
+  ]
+}
