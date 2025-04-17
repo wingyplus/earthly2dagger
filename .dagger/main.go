@@ -33,9 +33,8 @@ func (m *Earthly2Dagger) Build() *dagger.Container {
 }
 
 // Convert Earthfile into Dagger module.
-func (m *Earthly2Dagger) Run(
+func (m *Earthly2Dagger) Convert(
 	ctx context.Context,
-	// +optional
 	earthfile string,
 ) (string, error) {
 	return m.Build().
