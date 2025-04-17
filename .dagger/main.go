@@ -7,7 +7,7 @@ import (
 
 func New(
 	// +defaultPath="/"
-	// +ignore=["**/*", "!build.zig", "!build.zig.zon", "!src/**/*.zig"]
+	// +ignore=["**/*", "!build.zig", "!build.zig.zon", "!src/**/*.zig", "!fixtures/**/*.earth", "!fixtures/**/*.go"]
 	source *dagger.Directory,
 ) *Earthly2Dagger {
 	return &Earthly2Dagger{

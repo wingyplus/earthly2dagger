@@ -49,62 +49,50 @@ pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: a
 }
 
 test generate {
-    const source_file =
-        \\VERSION 0.7
-        \\
-        \\build:
-        \\  ARG --required NAME
-        \\  ARG TAG
-        \\  RUN echo "Hello, World ${TAG}"
-        \\
-        \\test:
-        \\  FROM alpine
-    ;
+    const allocator = std.testing.allocator;
 
-    const expected =
-        \\package main
-        \\
-        \\import "dagger/my-module/internal/dagger"
-        \\
-        \\type MyModule struct {
-        \\  Container *dagger.Container
-        \\}
-        \\
-        \\func New(
-        \\  // +optional
-        \\  container *dagger.Container,
-        \\) *MyModule {
-        \\  if container == nil {
-        \\    container = dag.Container()
-        \\  }
-        \\  return &MyModule{Container: container}
-        \\}
-        \\
-        \\func (m *MyModule) Build(
-        \\name string,
-        \\// +optional
-        \\tag string,
-        \\) *dagger.Container {
-        \\return m.Container.
-        \\WithEnvVariable("NAME", name).
-        \\WithEnvVariable("TAG", tag).
-        \\WithExec([]string{"sh", "-c", `echo "Hello, World ${TAG}"`}, dagger.ContainerWithExecOpts{Expand: true})
-        \\}
-        \\
-        \\func (m *MyModule) Test(
-        \\) *dagger.Container {
-        \\return m.Container.
-        \\From("alpine")
-        \\}
-        \\
-        \\
-    ;
+    try testGenerate(allocator, "simple");
+    try testGenerate(allocator, "simple-multi-target");
+    try testGenerate(allocator, "simple-args");
+}
 
-    var out = std.ArrayList(u8).init(std.testing.allocator);
-    defer out.deinit();
+fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !void {
+    const dir = std.fs.cwd();
+    try dir.makePath("tmp");
 
-    try generate(std.testing.allocator, source_file, out.writer());
-    try std.testing.expectEqualStrings(expected, out.items);
+    const input = "fixtures/" ++ fixture ++ ".earth";
+    const output = "fixtures/" ++ fixture ++ ".go";
+    const tmp = "tmp/" ++ fixture ++ ".go";
+
+    const source_file = try readAllAlloc(allocator, dir, input);
+    defer allocator.free(source_file);
+
+    const expected_module_source_file = try readAllAlloc(allocator, dir, output);
+    defer allocator.free(expected_module_source_file);
+
+    const out = try dir.createFile(tmp, .{ .read = false });
+    defer out.close();
+
+    try generate(allocator, source_file, out.writer());
+
+    const formatted_source_file = try gofmt(allocator, tmp);
+    defer allocator.free(formatted_source_file);
+    try std.testing.expectEqualStrings(expected_module_source_file, formatted_source_file);
+}
+
+fn readAllAlloc(allocator: std.mem.Allocator, dir: std.fs.Dir, sub_path: []const u8) ![]u8 {
+    const fixture = try dir.openFile(sub_path, .{ .mode = .read_only });
+    defer fixture.close();
+    return try fixture.readToEndAlloc(allocator, 3 * 1024 * 1024);
+}
+
+fn gofmt(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const run_result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "gofmt", path },
+    });
+    defer allocator.free(run_result.stderr);
+    return run_result.stdout;
 }
 
 fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.ArrayList(earthfile.Target)) !void {

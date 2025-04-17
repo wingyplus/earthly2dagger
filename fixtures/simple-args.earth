@@ -1,0 +1,7 @@
+VERSION 0.7
+
+build:
+  ARG --required NAME
+  ARG TAG
+  FROM alpine:${TAG}
+  RUN echo "Hello, World ${NAME}"

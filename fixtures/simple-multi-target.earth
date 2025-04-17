@@ -1,0 +1,8 @@
+VERSION 0.7
+
+build:
+  RUN echo "Hello, World"
+
+test:
+  FROM alpine
+
