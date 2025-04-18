@@ -1,7 +1,19 @@
 const std = @import("std");
 const ts = @import("tree-sitter");
-const ts_util = @import("./ts_util.zig");
+
 const strcase = @import("./strcase.zig");
+const ts_earthfile = @import("tree-sitter-earthfile");
+const ts_util = @import("./ts_util.zig");
+
+const Earthfile = @This();
+
+allocator: std.mem.Allocator,
+
+// `Earthfile` source file.
+source_file: []const u8,
+
+// All the targets in `Earthfile`.
+targets: std.ArrayList(Target),
 
 pub const Arg = struct {
     name: []const u8,
@@ -44,17 +56,65 @@ pub const Target = struct {
         self.statements.deinit();
     }
 
-    pub fn addStatement(self: *Target, statement: Statement) !void {
+    pub fn addStatement(self: *Self, statement: Statement) !void {
         try self.statements.append(statement);
     }
 };
 
+pub fn init(allocator: std.mem.Allocator, source_file: []const u8) Earthfile {
+    return .{
+        .allocator = allocator,
+        .source_file = source_file,
+        .targets = std.ArrayList(Target).init(allocator),
+    };
+}
+
+pub fn deinit(self: *Earthfile) void {
+    self.targets.deinit();
+}
+
+pub fn parse(self: *Earthfile) !void {
+    const language = ts_earthfile.language();
+    defer language.destroy();
+
+    const parser = ts.Parser.create();
+    defer parser.destroy();
+    try parser.setLanguage(language);
+
+    // Parse source file into tree.
+    const tree = parser.parseString(self.source_file, null).?;
+    defer tree.destroy();
+
+    // !NOTE
+    //
+    // We need to looking into base `base_target` to construct a base container.
+
+    // Write a query.
+    var error_offset: u32 = 0;
+    var query = try ts.Query.create(language, "(target) @target", &error_offset);
+    defer query.destroy();
+
+    // Querying...
+    var query_cursor = ts.QueryCursor.create();
+    defer query_cursor.destroy();
+
+    query_cursor.exec(query, tree.rootNode());
+
+    // Retrieve a result from query.
+    while (query_cursor.nextMatch()) |match| {
+        const captures = match.captures;
+        for (captures) |capture| {
+            try self.targets.append(try self.parseTarget(capture.node));
+        }
+    }
+}
+
 // Convert target node into Dagger function definition.
-pub fn parseTarget(allocator: std.mem.Allocator, target_node: ts.Node, source_file: []const u8) !Target {
-    var fun = Target.init(allocator);
+pub fn parseTarget(self: *Earthfile, target_node: ts.Node) !Target {
+    var fun = Target.init(self.allocator);
 
     const name_node = target_node.childByFieldName("name").?;
-    fun.name = ts_util.content(name_node, source_file);
+    fun.name = ts_util.content(name_node, self.source_file);
 
     // 0 is name node.
     // 1 is `:` node.
@@ -63,19 +123,19 @@ pub fn parseTarget(allocator: std.mem.Allocator, target_node: ts.Node, source_fi
         if (block_node.child(@intCast(child_index))) |stmt_node| {
             // ARG name
             if (std.mem.eql(u8, stmt_node.kind(), "arg_command")) {
-                try parseArgStatement(allocator, &fun, stmt_node, source_file);
+                try self.parseArgStatement(&fun, stmt_node);
             }
 
             // FROM image
             //
             // image = target | image_spec | string
             if (std.mem.eql(u8, stmt_node.kind(), "from_command")) {
-                try parseFromStatement(&fun, stmt_node, source_file);
+                try self.parseFromStatement(&fun, stmt_node);
             }
 
             // RUN command ...
             if (std.mem.eql(u8, stmt_node.kind(), "run_command")) {
-                try parseRunStatement(&fun, stmt_node, source_file);
+                try self.parseRunStatement(&fun, stmt_node);
             }
         }
     }
@@ -83,7 +143,7 @@ pub fn parseTarget(allocator: std.mem.Allocator, target_node: ts.Node, source_fi
     return fun;
 }
 
-fn parseArgStatement(allocator: std.mem.Allocator, fun: *Target, stmt_node: ts.Node, source_file: []const u8) !void {
+fn parseArgStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
     const var_node = stmt_node.childByFieldName("name").?;
     var required = false;
     const options_node = stmt_node.childByFieldName("options");
@@ -94,30 +154,30 @@ fn parseArgStatement(allocator: std.mem.Allocator, fun: *Target, stmt_node: ts.N
             }
         }
     }
-    const env_name = ts_util.content(var_node, source_file);
+    const env_name = ts_util.content(var_node, self.source_file);
     try fun.args.append(Arg{
         .name = env_name,
         .required = required,
     });
     try fun.statements.append(Statement{
-        .env = .{ env_name, try strcase.toCamel(allocator, env_name) },
+        .env = .{ env_name, try strcase.toCamel(self.allocator, env_name) },
     });
 }
 
-fn parseFromStatement(fun: *Target, stmt_node: ts.Node, source_file: []const u8) !void {
+fn parseFromStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
     var image: []const u8 = "";
     var tag: ?[]const u8 = null;
 
     var image_node = stmt_node.child(1).?;
     if (std.mem.eql(u8, image_node.kind(), "string")) {
-        image = ts_util.content(image_node, source_file);
+        image = ts_util.content(image_node, self.source_file);
     } else if (std.mem.eql(u8, image_node.kind(), "image_spec")) {
         const image_name_node = image_node.childByFieldName("name").?;
         const image_tag_node = image_node.childByFieldName("tag");
 
-        image = ts_util.content(image_name_node, source_file);
+        image = ts_util.content(image_name_node, self.source_file);
         if (image_tag_node) |node| {
-            tag = ts_util.content(node, source_file);
+            tag = ts_util.content(node, self.source_file);
         }
     } else {
         unreachable;
@@ -128,9 +188,9 @@ fn parseFromStatement(fun: *Target, stmt_node: ts.Node, source_file: []const u8)
     });
 }
 
-fn parseRunStatement(fun: *Target, stmt_node: ts.Node, source_file: []const u8) !void {
+fn parseRunStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
     const shell_fragment_node = stmt_node.child(1).?;
-    const sh = ts_util.content(shell_fragment_node, source_file);
+    const sh = ts_util.content(shell_fragment_node, self.source_file);
     try fun.addStatement(Statement{
         .run = sh,
     });

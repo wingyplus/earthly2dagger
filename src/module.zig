@@ -1,51 +1,15 @@
 const std = @import("std");
-const ts = @import("tree-sitter");
-const ts_earthfile = @import("tree-sitter-earthfile");
-const earthfile = @import("./earthfile.zig");
+const Earthfile = @import("./Earthfile.zig");
 const strcase = @import("./strcase.zig");
 
 pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anytype) !void {
     var arena_allocator = std.heap.ArenaAllocator.init(allocator);
     defer arena_allocator.deinit();
-
-    var functions = std.ArrayList(earthfile.Target).init(arena_allocator.allocator());
-    defer functions.deinit();
-
-    const language = ts_earthfile.language();
-    defer language.destroy();
-
-    const parser = ts.Parser.create();
-    defer parser.destroy();
-    try parser.setLanguage(language);
-
-    // Parse source file into tree.
-    const tree = parser.parseString(source_file, null).?;
-    defer tree.destroy();
-
-    // !NOTE
-    //
-    // We need to looking into base `base_target` to construct a base container.
-
-    // Write a query.
-    var error_offset: u32 = 0;
-    var query = try ts.Query.create(language, "(target) @target", &error_offset);
-    defer query.destroy();
-
-    // Querying...
-    var query_cursor = ts.QueryCursor.create();
-    defer query_cursor.destroy();
-
-    query_cursor.exec(query, tree.rootNode());
-
-    // Retrieve a result from query.
-    while (query_cursor.nextMatch()) |match| {
-        const captures = match.captures;
-        for (captures) |capture| {
-            try functions.append(try earthfile.parseTarget(arena_allocator.allocator(), capture.node, source_file));
-        }
-    }
-
-    try generateModule(arena_allocator.allocator(), writer, functions);
+    const arena = arena_allocator.allocator();
+    var earthfile = Earthfile.init(arena, source_file);
+    defer earthfile.deinit();
+    try earthfile.parse();
+    try generateModule(arena, writer, &earthfile);
 }
 
 test generate {
@@ -95,7 +59,7 @@ fn gofmt(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     return run_result.stdout;
 }
 
-fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.ArrayList(earthfile.Target)) !void {
+fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Earthfile) !void {
     _ = try writer.write(
         \\package main
         \\
@@ -120,7 +84,7 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
     //
     // Target rendering.
     //
-    for (functions.items) |fun| {
+    for (earthfile.targets.items) |fun| {
         const name = try strcase.toPascal(allocator, fun.name);
         defer allocator.free(name);
 
