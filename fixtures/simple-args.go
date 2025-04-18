@@ -27,3 +27,12 @@ func (m *MyModule) Build(
 		From("alpine:${TAG}").
 		WithExec([]string{"sh", "-c", `echo "Hello, World ${NAME}"`}, dagger.ContainerWithExecOpts{Expand: true})
 }
+
+func (m *MyModule) ArgsLongName(
+	multiWord string,
+) *dagger.Container {
+	return m.Container.
+		WithEnvVariable("MULTI_WORD", multiWord).
+		From("alpine").
+		WithExec([]string{"sh", "-c", `echo "Hello, World"`}, dagger.ContainerWithExecOpts{Expand: true})
+}

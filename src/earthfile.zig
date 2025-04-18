@@ -100,7 +100,7 @@ fn parseArgStatement(allocator: std.mem.Allocator, fun: *Target, stmt_node: ts.N
         .required = required,
     });
     try fun.statements.append(Statement{
-        .env = .{ env_name, try strcase.downcase(allocator, env_name) },
+        .env = .{ env_name, try strcase.toCamel(allocator, env_name) },
     });
 }
 

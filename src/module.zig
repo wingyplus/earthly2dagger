@@ -121,13 +121,13 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, functions: std.
     // Target rendering.
     //
     for (functions.items) |fun| {
-        const name = try strcase.pascalize(allocator, fun.name);
+        const name = try strcase.toPascal(allocator, fun.name);
         defer allocator.free(name);
 
         _ = try writer.print("func (m *MyModule) {s}(\n", .{name});
         // Arguments rendering.
         for (fun.args.items) |arg| {
-            const arg_name = try strcase.downcase(allocator, arg.name);
+            const arg_name = try strcase.toCamel(allocator, arg.name);
             defer allocator.free(arg_name);
             if (!arg.required) {
                 _ = try writer.write("// +optional\n");

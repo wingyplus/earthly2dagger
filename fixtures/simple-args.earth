@@ -5,3 +5,8 @@ build:
   ARG TAG
   FROM alpine:${TAG}
   RUN echo "Hello, World ${NAME}"
+
+args-long-name:
+  ARG --required MULTI_WORD
+  FROM alpine
+  RUN echo "Hello, World"
