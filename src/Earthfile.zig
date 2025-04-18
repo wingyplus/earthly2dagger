@@ -29,9 +29,14 @@ pub const Statement = union(enum) {
     // FROM <image>
     from: ImageSpec,
     // RUN <command>
+    // TODO: support `--no-cache` option.
     run: []const u8,
     // ENV <key> <value>
     env: Env,
+    // EXPOSE <port>
+    expose: []const u8,
+    // WORKDIR <path>
+    workdir: []const u8,
 };
 
 // A target definition.
@@ -121,21 +126,24 @@ pub fn parseTarget(self: *Earthfile, target_node: ts.Node) !Target {
     var block_node = target_node.child(2).?;
     for (0..block_node.childCount()) |child_index| {
         if (block_node.child(@intCast(child_index))) |stmt_node| {
-            // ARG name
             if (std.mem.eql(u8, stmt_node.kind(), "arg_command")) {
                 try self.parseArgStatement(&fun, stmt_node);
             }
 
-            // FROM image
-            //
-            // image = target | image_spec | string
             if (std.mem.eql(u8, stmt_node.kind(), "from_command")) {
                 try self.parseFromStatement(&fun, stmt_node);
             }
 
-            // RUN command ...
             if (std.mem.eql(u8, stmt_node.kind(), "run_command")) {
                 try self.parseRunStatement(&fun, stmt_node);
+            }
+
+            if (std.mem.eql(u8, stmt_node.kind(), "expose_command")) {
+                try self.parseExposeStatement(&fun, stmt_node);
+            }
+
+            if (std.mem.eql(u8, stmt_node.kind(), "workdir_command")) {
+                try self.parseWorkdirStatement(&fun, stmt_node);
             }
         }
     }
@@ -193,5 +201,21 @@ fn parseRunStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
     const sh = ts_util.content(shell_fragment_node, self.source_file);
     try fun.addStatement(Statement{
         .run = sh,
+    });
+}
+
+fn parseExposeStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
+    const port_node = stmt_node.child(1).?;
+    const port = ts_util.content(port_node, self.source_file);
+    try fun.addStatement(Statement{
+        .expose = port,
+    });
+}
+
+fn parseWorkdirStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
+    const path_node = stmt_node.child(1).?;
+    const path = ts_util.content(path_node, self.source_file);
+    try fun.addStatement(Statement{
+        .workdir = path,
     });
 }

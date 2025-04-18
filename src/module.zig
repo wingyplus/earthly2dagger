@@ -6,9 +6,11 @@ pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: a
     var arena_allocator = std.heap.ArenaAllocator.init(allocator);
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
+
     var earthfile = Earthfile.init(arena, source_file);
     defer earthfile.deinit();
     try earthfile.parse();
+
     try generateModule(arena, writer, &earthfile);
 }
 
@@ -18,6 +20,8 @@ test generate {
     try testGenerate(allocator, "simple");
     try testGenerate(allocator, "simple-multi-target");
     try testGenerate(allocator, "simple-args");
+    try testGenerate(allocator, "expose-port");
+    try testGenerate(allocator, "workdir");
 }
 
 fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !void {
@@ -129,6 +133,14 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
                     const env_name, const env_value = env;
                     _ = try writer.write(".\n");
                     _ = try writer.print("WithEnvVariable(\"{s}\", {s})", .{ env_name, env_value });
+                },
+                .expose => |port| {
+                    _ = try writer.write(".\n");
+                    _ = try writer.print("WithExposedPort({s})", .{port});
+                },
+                .workdir => |path| {
+                    _ = try writer.write(".\n");
+                    _ = try writer.print("WithWorkdir(\"{s}\")", .{path});
                 },
             }
         }
