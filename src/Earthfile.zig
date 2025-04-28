@@ -25,6 +25,11 @@ pub const ImageSpec = std.meta.Tuple(&.{ []const u8, ?[]const u8 });
 // A tuple of key and value.
 pub const Env = std.meta.Tuple(&.{ []const u8, []const u8 });
 
+pub const ShellArg = union(enum) {
+    shell: []const u8,
+    exec: [][]const u8,
+};
+
 pub const Statement = union(enum) {
     // FROM <image>
     from: ImageSpec,
@@ -37,6 +42,9 @@ pub const Statement = union(enum) {
     expose: []const u8,
     // WORKDIR <path>
     workdir: []const u8,
+    // CMD command arg1 arg2...
+    // CMD ["command", "arg1", "arg2"...]
+    cmd: ShellArg,
 };
 
 // A target definition.
@@ -145,6 +153,10 @@ pub fn parseTarget(self: *Earthfile, target_node: ts.Node) !Target {
             if (std.mem.eql(u8, stmt_node.kind(), "workdir_command")) {
                 try self.parseWorkdirStatement(&fun, stmt_node);
             }
+
+            if (std.mem.eql(u8, stmt_node.kind(), "cmd_command")) {
+                try self.parseCmdStatement(&fun, stmt_node);
+            }
         }
     }
 
@@ -218,4 +230,11 @@ fn parseWorkdirStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !vo
     try fun.addStatement(Statement{
         .workdir = path,
     });
+}
+
+fn parseCmdStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
+    const node = stmt_node.child(1).?;
+    if (std.mem.eql(u8, node.kind(), "shell_fragment")) {
+        try fun.addStatement(Statement{ .cmd = ShellArg{ .shell = ts_util.content(node, self.source_file) } });
+    }
 }
