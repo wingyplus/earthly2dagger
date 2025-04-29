@@ -1,5 +1,9 @@
 VERSION 0.8
 
-test: 
+test-cmd-string:
   FROM alpine
   CMD echo 'hello, world'
+
+test-cmd-array:
+  FROM alpine
+  CMD ["echo", "hello, world"]

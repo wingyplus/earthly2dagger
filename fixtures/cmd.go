@@ -16,8 +16,14 @@ func New(
 	return &MyModule{Container: container}
 }
 
-func (m *MyModule) Test() *dagger.Container {
+func (m *MyModule) TestCmdString() *dagger.Container {
 	return m.Container.
 		From("alpine").
 		WithDefaultArgs([]string{"sh", "-c", `echo 'hello, world'`})
+}
+
+func (m *MyModule) TestCmdArray() *dagger.Container {
+	return m.Container.
+		From("alpine").
+		WithDefaultArgs([]string{"echo", "hello, world"})
 }

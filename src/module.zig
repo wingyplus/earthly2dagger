@@ -175,9 +175,10 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
                             // TODO: is it support expand here?
                             _ = try writer.write("}");
                         },
-                        .exec => |_| {
-                            // TODO: implement me.
-                            unreachable;
+                        .exec => |args| {
+                            _ = try writer.write("[]string{");
+                            _ = try writer.write(try std.mem.join(allocator, ",", args));
+                            _ = try writer.write("}");
                         },
                     }
                     _ = try writer.write(")");

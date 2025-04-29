@@ -236,5 +236,24 @@ fn parseCmdStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
     const node = stmt_node.child(1).?;
     if (std.mem.eql(u8, node.kind(), "shell_fragment")) {
         try fun.addStatement(Statement{ .cmd = ShellArg{ .shell = ts_util.content(node, self.source_file) } });
+        return;
     }
+    if (std.mem.eql(u8, node.kind(), "string_array")) {
+        var args = std.ArrayList([]const u8).init(self.allocator);
+        defer args.deinit();
+
+        for (0..node.childCount()) |idx| {
+            const s_node = node.child(@intCast(idx)).?;
+            if (std.mem.eql(u8, s_node.kind(), "double_quoted_string")) {
+                // TODO: remove me
+                // std.debug.print("Debug: {s}, child_count: {d}, kind: {s}\n", .{ ts_util.content(s_node, self.source_file), s_node.childCount(), s_node.kind() });
+                // `"` + <string> + `"`
+                try args.append(ts_util.content(s_node, self.source_file));
+            }
+        }
+        try fun.addStatement(Statement{ .cmd = ShellArg{ .exec = try args.toOwnedSlice() } });
+        return;
+    }
+    // This line should not be reach here.
+    unreachable;
 }
