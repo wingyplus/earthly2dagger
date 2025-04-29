@@ -171,7 +171,6 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
                         .shell => |sh| {
                             _ = try writer.write("[]string{\"sh\", \"-c\", ");
                             _ = try writer.print("`{s}`", .{sh});
-                            // TODO: is it support expand here?
                             _ = try writer.write("}");
                         },
                         .exec => |args| {
