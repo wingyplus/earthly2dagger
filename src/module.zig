@@ -1,8 +1,15 @@
 const std = @import("std");
+
 const Earthfile = @import("./Earthfile.zig");
 const strcase = @import("./strcase.zig");
 
-pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anytype) !void {
+const ModuleConfig = struct {
+    name: []const u8,
+    go_mod_name: []const u8,
+};
+
+pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anytype, module_config: ModuleConfig) !void {
+    _ = module_config; // autofix
     var arena_allocator = std.heap.ArenaAllocator.init(allocator);
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
@@ -22,6 +29,7 @@ test generate {
     try testGenerate(allocator, "simple-args");
     try testGenerate(allocator, "expose-port");
     try testGenerate(allocator, "workdir");
+    try testGenerate(allocator, "cmd");
 }
 
 fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !void {
@@ -41,7 +49,7 @@ fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !voi
     const out = try dir.createFile(tmp, .{ .read = false });
     defer out.close();
 
-    try generate(allocator, source_file, out.writer());
+    try generate(allocator, source_file, out.writer(), .{ .name = "my-module", .go_mod_name = "dagger/my-module" });
 
     const formatted_source_file = try gofmt(allocator, tmp);
     defer allocator.free(formatted_source_file);
@@ -141,6 +149,23 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
                 .workdir => |path| {
                     _ = try writer.write(".\n");
                     _ = try writer.print("WithWorkdir(\"{s}\")", .{path});
+                },
+                .cmd => |cmd| {
+                    _ = try writer.write(".\n");
+                    _ = try writer.write("WithDefaultArgs(");
+                    switch (cmd) {
+                        .shell => |sh| {
+                            _ = try writer.write("[]string{\"sh\", \"-c\", ");
+                            _ = try writer.print("`{s}`", .{sh});
+                            // TODO: is it support expand here?
+                            _ = try writer.write("}");
+                        },
+                        .exec => |_| {
+                            // TODO: implement me.
+                            unreachable;
+                        },
+                    }
+                    _ = try writer.write(")");
                 },
             }
         }
