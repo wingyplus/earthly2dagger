@@ -36,16 +36,19 @@ func (m *Earthly2Dagger) Build() *dagger.Container {
 func (m *Earthly2Dagger) Convert(
 	ctx context.Context,
 	earthfile *dagger.File,
-) (string, error) {
+	// Dagger module name
+	dagModName string,
+	// Go module name
+	goModName string,
+) *dagger.File {
 	path := "/earthfile"
 	out := "/tmp/out.go"
 
 	return m.Build().
 		WithMountedFile(path, earthfile).
-		WithExec([]string{"e2d", path}, dagger.ContainerWithExecOpts{
+		WithExec([]string{"e2d", path, dagModName, goModName}, dagger.ContainerWithExecOpts{
 			RedirectStdout: out,
 		}).
 		WithExec([]string{"go", "fmt", out}).
-		File(out).
-		Contents(ctx)
+		File(out)
 }
