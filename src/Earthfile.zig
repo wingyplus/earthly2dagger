@@ -45,6 +45,9 @@ pub const Statement = union(enum) {
     // CMD command arg1 arg2...
     // CMD ["command", "arg1", "arg2"...]
     cmd: ShellArg,
+    // ENTRYPOINT command arg1 arg2...
+    // ENTRYPOINT ["command", "arg1", "arg2"...]
+    entrypoint: ShellArg,
 };
 
 // A target definition.
@@ -157,6 +160,10 @@ pub fn parseTarget(self: *Earthfile, target_node: ts.Node) !Target {
             if (std.mem.eql(u8, stmt_node.kind(), "cmd_command")) {
                 try self.parseCmdStatement(&fun, stmt_node);
             }
+
+            if (std.mem.eql(u8, stmt_node.kind(), "entrypoint_command")) {
+                try self.parseEntrypointStatement(&fun, stmt_node);
+            }
         }
     }
 
@@ -250,6 +257,30 @@ fn parseCmdStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
             }
         }
         try fun.addStatement(Statement{ .cmd = ShellArg{ .exec = try args.toOwnedSlice() } });
+        return;
+    }
+    // This line should not be reach here.
+    unreachable;
+}
+
+fn parseEntrypointStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
+    const node = stmt_node.child(1).?;
+    if (std.mem.eql(u8, node.kind(), "shell_fragment")) {
+        try fun.addStatement(Statement{ .entrypoint = ShellArg{ .shell = ts_util.content(node, self.source_file) } });
+        return;
+    }
+    if (std.mem.eql(u8, node.kind(), "string_array")) {
+        var args = std.ArrayList([]const u8).init(self.allocator);
+        defer args.deinit();
+
+        for (0..node.childCount()) |idx| {
+            const s_node = node.child(@intCast(idx)).?;
+            if (std.mem.eql(u8, s_node.kind(), "double_quoted_string")) {
+                // `"` + <string> + `"`
+                try args.append(ts_util.content(s_node, self.source_file));
+            }
+        }
+        try fun.addStatement(Statement{ .entrypoint = ShellArg{ .exec = try args.toOwnedSlice() } });
         return;
     }
     // This line should not be reach here.

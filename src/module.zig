@@ -29,6 +29,7 @@ test generate {
     try testGenerate(allocator, "expose-port");
     try testGenerate(allocator, "workdir");
     try testGenerate(allocator, "cmd");
+    try testGenerate(allocator, "entrypoint");
 }
 
 fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !void {
@@ -168,6 +169,23 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
                     _ = try writer.write(".\n");
                     _ = try writer.write("WithDefaultArgs(");
                     switch (cmd) {
+                        .shell => |sh| {
+                            _ = try writer.write("[]string{\"sh\", \"-c\", ");
+                            _ = try writer.print("`{s}`", .{sh});
+                            _ = try writer.write("}");
+                        },
+                        .exec => |args| {
+                            _ = try writer.write("[]string{");
+                            _ = try writer.write(try std.mem.join(allocator, ",", args));
+                            _ = try writer.write("}");
+                        },
+                    }
+                    _ = try writer.write(")");
+                },
+                .entrypoint => |entrypoint| {
+                    _ = try writer.write(".\n");
+                    _ = try writer.write("WithEntrypoint(");
+                    switch (entrypoint) {
                         .shell => |sh| {
                             _ = try writer.write("[]string{\"sh\", \"-c\", ");
                             _ = try writer.print("`{s}`", .{sh});
