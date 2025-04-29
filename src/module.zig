@@ -135,7 +135,6 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
         }
         for (fun.statements.items) |stmt| {
             switch (stmt) {
-                // Convert `FROM image_spec` to `From(addr)`.
                 .from => |image_spec| {
                     const image, const tag = image_spec;
                     _ = try writer.write(".\n");

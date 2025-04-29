@@ -17,6 +17,7 @@ pub fn main() !void {
     var args = std.process.args();
     _ = args.next();
     const earthfile_path = args.next();
+    // TODO: validate arguments below
     const dagger_mod_name = args.next().?;
     const go_mod_name = args.next().?;
 
