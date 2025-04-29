@@ -245,8 +245,6 @@ fn parseCmdStatement(self: *Earthfile, fun: *Target, stmt_node: ts.Node) !void {
         for (0..node.childCount()) |idx| {
             const s_node = node.child(@intCast(idx)).?;
             if (std.mem.eql(u8, s_node.kind(), "double_quoted_string")) {
-                // TODO: remove me
-                // std.debug.print("Debug: {s}, child_count: {d}, kind: {s}\n", .{ ts_util.content(s_node, self.source_file), s_node.childCount(), s_node.kind() });
                 // `"` + <string> + `"`
                 try args.append(ts_util.content(s_node, self.source_file));
             }
