@@ -29,6 +29,7 @@ test generate {
     try testGenerate(allocator, "simple-args");
     try testGenerate(allocator, "expose-port");
     try testGenerate(allocator, "workdir");
+    try testGenerate(allocator, "cmd");
 }
 
 fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !void {
@@ -48,7 +49,7 @@ fn testGenerate(allocator: std.mem.Allocator, comptime fixture: []const u8) !voi
     const out = try dir.createFile(tmp, .{ .read = false });
     defer out.close();
 
-    try generate(allocator, source_file, out.writer());
+    try generate(allocator, source_file, out.writer(), .{ .name = "my-module", .go_mod_name = "dagger/my-module" });
 
     const formatted_source_file = try gofmt(allocator, tmp);
     defer allocator.free(formatted_source_file);

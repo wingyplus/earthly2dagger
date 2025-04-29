@@ -29,7 +29,8 @@ pub fn main() !void {
     defer earthfile.close();
 
     const source_file = try earthfile.readToEndAlloc(allocator, 3 * 1024 * 1024);
-    try module.generate(allocator, source_file, stdout.writer());
+    // TODO: configure module.
+    try module.generate(allocator, source_file, stdout.writer(), .{ .name = "my-module", .go_mod_name = "dagger/my-module" });
 }
 
 test {
