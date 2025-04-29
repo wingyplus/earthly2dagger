@@ -9,7 +9,6 @@ const ModuleConfig = struct {
 };
 
 pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: anytype, module_config: ModuleConfig) !void {
-    _ = module_config; // autofix
     var arena_allocator = std.heap.ArenaAllocator.init(allocator);
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
@@ -18,7 +17,7 @@ pub fn generate(allocator: std.mem.Allocator, source_file: []const u8, writer: a
     defer earthfile.deinit();
     try earthfile.parse();
 
-    try generateModule(arena, writer, &earthfile);
+    try generateModule(arena, writer, &earthfile, module_config);
 }
 
 test generate {
@@ -71,24 +70,40 @@ fn gofmt(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     return run_result.stdout;
 }
 
-fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Earthfile) !void {
-    _ = try writer.write(
+fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Earthfile, module_config: ModuleConfig) !void {
+    const dagger_mod_name = module_config.name;
+    const go_mod_name = module_config.go_mod_name;
+    const struct_name = try strcase.toPascal(allocator, dagger_mod_name);
+
+    _ = try writer.print(
         \\package main
         \\
-        \\import "dagger/my-module/internal/dagger"
+        \\import "{s}/internal/dagger"
         \\
-        \\type MyModule struct {
+    , .{go_mod_name});
+    _ = try writer.print("type {s}", .{struct_name});
+    _ = try writer.write(
+        \\ struct {
         \\  Container *dagger.Container
         \\}
         \\
+    );
+    _ = try writer.print(
         \\func New(
         \\  // +optional
         \\  container *dagger.Container,
-        \\) *MyModule {
+        \\) *{s}
+    , .{struct_name});
+    _ = try writer.write(
+        \\ {
         \\  if container == nil {
         \\    container = dag.Container()
         \\  }
-        \\  return &MyModule{Container: container}
+        \\
+    );
+    _ = try writer.print(" return &{s}", .{struct_name});
+    _ = try writer.write(
+        \\{Container: container}
         \\}
         \\
         \\
@@ -97,10 +112,10 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
     // Target rendering.
     //
     for (earthfile.targets.items) |fun| {
-        const name = try strcase.toPascal(allocator, fun.name);
-        defer allocator.free(name);
+        const fn_name = try strcase.toPascal(allocator, fun.name);
+        defer allocator.free(fn_name);
 
-        _ = try writer.print("func (m *MyModule) {s}(\n", .{name});
+        _ = try writer.print("func (m *{s}) {s}(\n", .{ struct_name, fn_name });
         // Arguments rendering.
         for (fun.args.items) |arg| {
             const arg_name = try strcase.toCamel(allocator, arg.name);
@@ -169,7 +184,6 @@ fn generateModule(allocator: std.mem.Allocator, writer: anytype, earthfile: *Ear
                 },
             }
         }
-        _ = try writer.write("\n}\n");
-        _ = try writer.write("\n");
+        _ = try writer.write("\n}\n\n");
     }
 }

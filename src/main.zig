@@ -17,11 +17,13 @@ pub fn main() !void {
     var args = std.process.args();
     _ = args.next();
     const earthfile_path = args.next();
+    const dagger_mod_name = args.next().?;
+    const go_mod_name = args.next().?;
 
     if (earthfile_path == null) {
         _ = try stderr.write("ERROR: Earthfile argument is missing.\n");
         _ = try stderr.write("help:\n");
-        _ = try stderr.write("\te2d [EARTHFILE]\n");
+        _ = try stderr.write("\te2d [EARTHFILE] [DAGGER_MOD_NAME] [GO_MOD_NAME]\n");
         return CliError.ArgumentError;
     }
 
@@ -29,8 +31,7 @@ pub fn main() !void {
     defer earthfile.close();
 
     const source_file = try earthfile.readToEndAlloc(allocator, 3 * 1024 * 1024);
-    // TODO: configure module.
-    try module.generate(allocator, source_file, stdout.writer(), .{ .name = "my-module", .go_mod_name = "dagger/my-module" });
+    try module.generate(allocator, source_file, stdout.writer(), .{ .name = dagger_mod_name, .go_mod_name = go_mod_name });
 }
 
 test {
