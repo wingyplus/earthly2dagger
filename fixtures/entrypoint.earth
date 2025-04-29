@@ -1,0 +1,9 @@
+VERSION 0.8
+
+test-entrypoint-string:
+  FROM alpine
+  ENTRYPOINT echo 'hello, world'
+
+test-entrypoint-array:
+  FROM alpine
+  ENTRYPOINT ["echo", "hello, world"]
