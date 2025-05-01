@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const module = @import("./root.zig").module;
 
@@ -9,10 +10,19 @@ pub fn main() !void {
     const stdout = std.io.getStdOut();
     const stderr = std.io.getStdErr();
 
-    // TODO: use gpa allocator.
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var da = std.heap.DebugAllocator(.{}){};
+    defer {
+        if (da.deinit() == .leak) {
+            @panic("Found memory leak!!");
+        }
+    }
+
+    var allocator: std.mem.Allocator = undefined;
+    if (builtin.mode == std.builtin.OptimizeMode.Debug) {
+        allocator = da.allocator();
+    } else {
+        allocator = std.heap.page_allocator;
+    }
 
     var args = std.process.args();
     _ = args.next();
@@ -31,7 +41,9 @@ pub fn main() !void {
     const earthfile = try std.fs.openFileAbsolute(earthfile_path.?, .{ .mode = .read_only });
     defer earthfile.close();
 
-    const source_file = try earthfile.readToEndAlloc(allocator, 3 * 1024 * 1024);
+    const meta = try earthfile.metadata();
+    const source_file = try earthfile.readToEndAlloc(allocator, meta.size());
+    defer allocator.free(source_file);
     try module.generate(allocator, source_file, stdout.writer(), .{ .name = dagger_mod_name, .go_mod_name = go_mod_name });
 }
 
